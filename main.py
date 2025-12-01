@@ -17,7 +17,7 @@ METADATA_FILE = Path("file_metadata.json")
 DEFAULT_EXPIRE_DAYS = 7
 CLEANUP_INTERVAL_SECONDS = 10 * 60
 
-app = FastAPI(title="Primex")
+app = FastAPI(title="Primex Secure Transfer")
 _metadata_lock = threading.Lock()
 
 
@@ -195,7 +195,7 @@ def landing_page() -> str:
     return """
     <html>
       <head>
-        <title>Primex Transfer</title>
+        <title>Primex Secure Transfer</title>
         <style>
           body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
           h1 { margin-bottom: 0.3rem; }
@@ -209,7 +209,7 @@ def landing_page() -> str:
         </style>
       </head>
       <body>
-        <h1>Primex Transfer</h1>
+        <h1>Primex Secure Transfer</h1>
         <p>Upload a file and get a download link. Default expiry is 7 days.</p>
         <form id="upload-form">
           <label>File</label>
