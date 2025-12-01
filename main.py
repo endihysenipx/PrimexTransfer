@@ -179,12 +179,26 @@ def file_page(file_id: str):
             font-weight: 600;
           }}
           a.button:hover {{ background: #1d4ed8; }}
+          button.copy {{
+            display: inline-block;
+            margin-top: 12px;
+            padding: 8px 14px;
+            background: #10b981;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+          }}
+          button.copy:hover {{ background: #0f9c75; }}
         </style>
       </head>
       <body>
         <h1>{filename}</h1>
         <p>Expires at: {expires_text}</p>
         <a class="button" href="{download_link}">Download</a>
+        <br />
+        <button class="copy" onclick="navigator.clipboard.writeText(window.location.href).then(()=>{{this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Link',1200);}})">Copy Link</button>
       </body>
     </html>
     """
@@ -220,8 +234,11 @@ def landing_page() -> str:
           <button type="submit">Upload</button>
         </form>
         <div id="result" class="tip"></div>
+        <button id="copy-btn" style="display:none;margin-top:10px;padding:8px 12px;background:#10b981;color:#fff;border:none;border-radius:4px;cursor:pointer;">Copy Link</button>
         <script>
           const form = document.getElementById('upload-form');
+          const copyBtn = document.getElementById('copy-btn');
+          let lastLink = null;
           form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const fileInput = form.querySelector('input[type="file"]');
@@ -232,11 +249,20 @@ def landing_page() -> str:
             if (!res.ok) {
               const err = await res.json();
               out.textContent = 'Error: ' + (err.detail || res.statusText);
+              copyBtn.style.display = 'none';
               return;
             }
             const json = await res.json();
             const viewLink = `${window.location.origin}${json.view_url}`;
             out.innerHTML = `File ID: <code>${json.file_id}</code><br/>Link: <a href="${viewLink}">${viewLink}</a><br/>Expires at: ${json.expires_at}`;
+            lastLink = viewLink;
+            copyBtn.style.display = 'inline-block';
+          });
+          copyBtn.addEventListener('click', async () => {
+            if (!lastLink) return;
+            await navigator.clipboard.writeText(lastLink);
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => (copyBtn.textContent = 'Copy Link'), 1200);
           });
         </script>
         <p class="tip">Direct API: POST <code>/upload</code> (form key <code>file</code>), GET <code>/file/&lt;file_id&gt;</code> for a landing page, GET <code>/download/&lt;file_id&gt;</code> to download.</p>
