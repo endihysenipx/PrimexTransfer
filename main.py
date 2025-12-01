@@ -17,13 +17,14 @@ METADATA_FILE = Path("file_metadata.json")
 DEFAULT_EXPIRE_DAYS = 7
 CLEANUP_INTERVAL_SECONDS = 10 * 60
 
-app = FastAPI(title="Elsa SwissTransfer Clone")
+app = FastAPI(title="Primex")
 _metadata_lock = threading.Lock()
 
 
 class UploadResponse(BaseModel):
     file_id: str = Field(..., description="ID to download the file")
     download_url: str = Field(..., description="Direct download URL")
+    view_url: str = Field(..., description="Landing page for the file")
     expires_at: datetime
 
 
@@ -88,10 +89,11 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
         _save_metadata(metadata)
 
     download_url = f"/download/{file_id}"
+    view_url = f"/file/{file_id}"
     # Schedule a cleanup in case the file is already expired by the time the request completes.
     background_tasks.add_task(_remove_if_expired, file_id)
 
-    return UploadResponse(file_id=file_id, download_url=download_url, expires_at=expires_at)
+    return UploadResponse(file_id=file_id, download_url=download_url, view_url=view_url, expires_at=expires_at)
 
 
 def _remove_if_expired(file_id: str) -> None:
@@ -134,12 +136,66 @@ def download_file(file_id: str):
     return FileResponse(path=file_path, filename=file_path.name.split("_", 1)[-1])
 
 
+@app.get("/file/{file_id}", response_class=HTMLResponse)
+def file_page(file_id: str):
+    with _metadata_lock:
+        metadata = _load_metadata()
+        info = metadata.get(file_id)
+        if not info:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        expires_at = datetime.fromisoformat(info["expires_at"])
+        if expires_at <= datetime.utcnow():
+            Path(info["path"]).unlink(missing_ok=True)
+            metadata.pop(file_id, None)
+            _save_metadata(metadata)
+            raise HTTPException(status_code=410, detail="File expired")
+
+        file_path = Path(info["path"])
+        if not file_path.exists():
+            metadata.pop(file_id, None)
+            _save_metadata(metadata)
+            raise HTTPException(status_code=404, detail="File missing on disk")
+
+    filename = file_path.name.split("_", 1)[-1]
+    download_link = f"/download/{file_id}"
+    expires_text = expires_at.strftime("%Y-%m-%d %H:%M UTC")
+    return f"""
+    <html>
+      <head>
+        <title>Download {filename}</title>
+        <style>
+          body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; text-align: center; }}
+          h1 {{ margin-bottom: 0.5rem; }}
+          p {{ color: #444; }}
+          a.button {{
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 18px;
+            background: #2563eb;
+            color: #fff;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+          }}
+          a.button:hover {{ background: #1d4ed8; }}
+        </style>
+      </head>
+      <body>
+        <h1>{filename}</h1>
+        <p>Expires at: {expires_text}</p>
+        <a class="button" href="{download_link}">Download</a>
+      </body>
+    </html>
+    """
+
+
 @app.get("/", response_class=HTMLResponse)
 def landing_page() -> str:
     return """
     <html>
       <head>
-        <title>Elsa SwissTransfer</title>
+        <title>Primex Transfer</title>
         <style>
           body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
           h1 { margin-bottom: 0.3rem; }
@@ -153,7 +209,7 @@ def landing_page() -> str:
         </style>
       </head>
       <body>
-        <h1>Elsa SwissTransfer</h1>
+        <h1>Primex Transfer</h1>
         <p>Upload a file and get a download link. Default expiry is 7 days.</p>
         <form id="upload-form">
           <label>File</label>
@@ -179,11 +235,11 @@ def landing_page() -> str:
               return;
             }
             const json = await res.json();
-            const link = `${window.location.origin}${json.download_url}`;
-            out.innerHTML = `File ID: <code>${json.file_id}</code><br/>Download: <a href="${link}">${link}</a><br/>Expires at: ${json.expires_at}`;
+            const viewLink = `${window.location.origin}${json.view_url}`;
+            out.innerHTML = `File ID: <code>${json.file_id}</code><br/>Link: <a href="${viewLink}">${viewLink}</a><br/>Expires at: ${json.expires_at}`;
           });
         </script>
-        <p class="tip">Direct API: POST <code>/upload</code> (form key <code>file</code>), GET <code>/download/&lt;file_id&gt;</code>.</p>
+        <p class="tip">Direct API: POST <code>/upload</code> (form key <code>file</code>), GET <code>/file/&lt;file_id&gt;</code> for a landing page, GET <code>/download/&lt;file_id&gt;</code> to download.</p>
       </body>
     </html>
     """
